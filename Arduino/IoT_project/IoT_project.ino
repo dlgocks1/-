@@ -10,7 +10,7 @@
 #define MP3_FILENAME_1 "/iotFoodTimeSound.mp3"
 #define MP3_FILENAME_2 "/iotNormalAlarmSound.mp3"
 #define MP3_FILENAME_3 "/iotFoodTimeSound.mp3"
-#define MP3_FILENAME_4 "/iotLostModeSound.mp3"
+
 #include <Arduino.h>
 #ifdef ESP32
 #include "SPIFFS.h";
@@ -81,7 +81,7 @@ const int daylightOffset_sec = 0;
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// 상태 변수 ////////////////////////////////////////////
-///////// 강아지 건강 상태, 센싱 모드, publish 모드, 강아지 분실 모드 ////////////////
+///////// 강아지 건강 상태, 센싱 모드, publish 모드 ////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
 // 강아지 바이탈사인
 String healthStatus = "normal";  // 기본값: normal , 이상값 검출 시: abnormal
@@ -91,9 +91,6 @@ String healthStatus = "normal";  // 기본값: normal , 이상값 검출 시: ab
 // 오전 or 오후 구분 (시간도 서버에 보낼 것)
 boolean sensingPublishStatus_1 = false;
 boolean sensingPublishStatus_2 = false;
-
-// 강아지 분실 모드
-boolean lostStatus = false;  // 기본값: false , 분실 시: true
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -180,7 +177,7 @@ void MDCallback(void *cbData, const char *type, bool isUnicode, const char *stri
 ////////////////////////// 알람 소리 MP3 재생 함수 //////////////////////////
 //////////////////////////////////////////////////////////////////////////
 // 알람 소리 mp3 파일 재생 함수
-// parameter (abnormalAlarmMP3, normalAlarmMP3, foodTimeAlarmMP3, lostModeAlarmMP3)
+// parameter (abnormalAlarmMP3, normalAlarmMP3, foodTimeAlarmMP3)
 void alarmPlay(int mp3Idx) {
   if (mp3Idx == 1) {
     Serial.println("abnormal alarm play");
@@ -191,9 +188,6 @@ void alarmPlay(int mp3Idx) {
   } else if (mp3Idx == 3) {
     Serial.println("food time alarm play");
     file = new AudioFileSourceSPIFFS(MP3_FILENAME_3);
-  } else if (mp3Idx == 4) {
-    Serial.println("lost mode alarm play");
-    file = new AudioFileSourceSPIFFS(MP3_FILENAME_4);
   }
 
   while((mpLoop)) {
@@ -293,24 +287,10 @@ void setup() {
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////// 루프 ////////////////////////////////////
 //////////// NTP 동기화 시간 타이머 (struct tm timeinfo) ////////////////
-///// AWS subscribe (강아지 건강 상태, 밥 시간 알람 설정, 분실 상태) ///////
+///// AWS subscribe (shadow) (강아지 건강 상태, 밥 시간 알람 설정) ////////
+///// AWS subscribe (센싱 데이터 (평균 심박수 + 체온 + 측정 시간) /////////
 ///////////////////////////////////////////////////////////////////////
 void loop() {
-  ///////////////////////////// 분실 모드 음성 출력 ///////////////////////////////
-  // 분실 모드가 되면 deepsleep X 계속 주기적으로 알람 발생 (delay를 준다 millis()로)
-  // 모듈 케이스에 전화번호 써넣게 하고 음성으로 모듈 케이스를 확인해서 전화해달라고 음성 출력
-  // 분실 모드에서는 Deepsleep X
-  if ((lostStatus)) {
-    alarmPlay(lostModeAlarmMP3);
-    // 계속 알람 발생 (millis() 이용)
-    // 이 강아지를 발견하신 분께서는 강아지 등에 있는 기기에 써진 번호로 연락해주세요
-    // 어플로 알람을 끌 수 있음 (분실 모드를 끄면 알람도 꺼짐)
-    // 구현해야함
-    
-    
-  }
-
-  
   ///////////////////// NTP 동기화 시간 타이머 //////////////////////////
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -355,12 +335,6 @@ void loop() {
     int foodTime_4 = foodTime.toInt();
     foodTime = (const char*) state["foodTime5"];
     int foodTime_5 = foodTime.toInt();
-
-    // 분실 모드 설정 (false: 기본값 , true: 강아지 분실 상태)
-    boolean lostStatus = (const char*) state["lostStatus"];
-    if((lostStatus)) {
-      alarmPlay(lostModeAlarmMP3);
-    }
 
     // AWS-IoT에서 메세지 subscribe 끝나면
     // 그 메세지에 따라 바뀐 상태 다시 JSON 으로 publish 해줘서 shadow 바꾸기.

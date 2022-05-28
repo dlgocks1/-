@@ -30,7 +30,7 @@
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// WiFi 및 AWS-IoT Core ////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
-// AWS_IoT Shadow
+// AWS_IoT Shadow (이 Shadow랑 JSON + Topic 부분들은 AWS랑 맞춰서 수정해야함)
 AWS_IOT testShadow;
 
 // WiFi 설정 (본인 wifi에 맞추기)
@@ -68,7 +68,6 @@ boolean mpLoop = true;
 const int abnormalAlarmMP3 = 1;
 const int normalAlarmMP3 = 2;
 const int foodTimeAlarmMP3 = 3;
-const int lostModeAlarmMP3 = 4;
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -81,7 +80,7 @@ const int daylightOffset_sec = 0;
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// 상태 변수 ////////////////////////////////////////////
-///////// 강아지 건강 상태, 센싱 모드, publish 모드 ////////////////////////////////
+///////// 강아지 건강 상태, 센싱 모드, publish 모드, 밥 시간 알람 모드 ////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
 // 강아지 바이탈사인
 String healthStatus = "normal";  // 기본값: normal , 이상값 검출 시: abnormal
@@ -92,6 +91,9 @@ String healthStatus = "normal";  // 기본값: normal , 이상값 검출 시: ab
 boolean sensingPublishStatus_1 = false;
 boolean sensingPublishStatus_2 = false;
 
+// 밥 시간 알람 모드 (기본값(알람이 모두 미설정): false, 하나라도 설정: true)
+boolean foodAlarmMode = false;
+
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// 알람 시간 선언 /////////// ////////////////////////////////
@@ -99,44 +101,28 @@ boolean sensingPublishStatus_2 = false;
 /////////////////////////////////////////////////////////////////////////////////
 // 바이탈 사인 검사 시간
 // 오전 7시
-int sensingHour_1 = 7;
-int sensingMin_1 = 0;
-
+const int sensingHour_1 = 7;
 // 오후 10시
-int sensingHour_2 = 22;
-int sensingMin_2 = 0;
+const int sensingHour_2 = 22;
 
 // 건강 이상 감지 시 알람 주기
 // abnormalAlarmStatus는 매일 초기화 (abnormalAlarmDay = 0: 기본값)
 int abnormalAlarmDay = 0;
-// 오전 10시
-int abnormalHour_1 = 10;
-boolean abnormalAlarmStatus_1 = false;
-// 오후 2시
-int abnormalHour_2 = 14;
-boolean abnormalAlarmStatus_2 = false;
-// 오후 5시
-int abnormalHour_3 = 17;
-boolean abnormalAlarmStatus_3 = false;
-// 오후 8시
-int abnormalHour_4 = 20;
-boolean abnormalAlarmStatus_4 = false;
+
+// 오전 10시 , 오후 2시, 오후 5시, 오후 8시
+const int abnormalHour[4] = {10, 14, 17, 20};
+boolean abnormalAlarmStatus[4] = {false, false, false, false};
+
 
 // 밥 시간
 // 사용자 설정 (App -> AWS subscribe)
 // 0: 알람 미설정 (시간 * 60 + 분 ==> 시간 = foodTime / 60 , 분 = foodTime % 60)
 // foodAlarmStatus는 매일 초기화 (foodAlarmDay = 0: 기본값)
-int foodAlarmDay = 0;
-int foodTime_1 = 0;
-boolean foodAlarmStatus_1 = false;
-int foodTime_2 = 0;
-boolean foodAlarmStatus_2 = false;
-int foodTime_3 = 0;
-boolean foodAlarmStatus_3 = false;
-int foodTime_4 = 0;
-boolean foodAlarmStatus_4 = false;
-int foodTime_5 = 0;
-boolean foodAlarmStatus_5 = false;
+int foodAlarmDay[5] = {0, 0, 0, 0, 0};
+int foodTime[5] = {-1, -1, -1, -1, -1};
+boolean foodAlarmStatus[5] = {false, false, false, false, false};
+int foodHour[5] = {-1, -1, -1, -1, -1};
+int foodMin[5] = {-1, -1, -1, -1, -1};
 
 
 ///////////////////////////////////////////////////////////////////////////
@@ -205,7 +191,7 @@ void alarmPlay(int mp3Idx) {
     if (mp3->isRunning()) {
       if (!mp3->loop()) mp3->stop();
     } else {
-      Serial.printf("MP3 done\n");
+      Serial.printf("Alarm Play Done\n");
       mpState = false;
       delete file;
       delete id3;
@@ -216,11 +202,7 @@ void alarmPlay(int mp3Idx) {
   }
   
   mpLoop = true;
-  Serial.print("mechanism test OK: ");
-  delay(2000);
-  Serial.print("delay 2000");
-
-  
+ 
 }
 
 
@@ -309,8 +291,7 @@ void loop() {
     JSONVar myObj = JSON.parse(rcvdPayload);
     JSONVar state = myObj["state"];
 
-    // AWS-IoT Core에서 바이탈사인 이상값 검출 시 subscribe (AWS -> ESP32)
-    // 또한 이상값 검출되고 난 후에 다시 정상값 검출되면 다시 subscribe (AWS -> ESP32)
+    //////////////// JSON 바이탈사인 정상 or 이상 ///////////////////
     String healthStatus = (const char*) state["healthStatus"];
     Serial.print("Dog's Heart Beat is ");
     Serial.print(healthStatus);
@@ -320,21 +301,102 @@ void loop() {
       alarmPlay(abnormalAlarmMP3);
     } else if (healthStatus == "normal") {
       alarmPlay(normalAlarmMP3);
-      int abnormalAlarmDay = 0;  // abnormal 알람 설정 초기화 (다시 abnormal 상태가 될 때 충돌 방지)
+      abnormalAlarmDay = 0;  // abnormal 알람 설정 초기화 (다시 abnormal 상태가 될 때 충돌 방지)
+      
     }
     
-    // 일단 시간으로만 구현해서 분까지 추가 구현해야 할듯.
-    // 밥 시간 알람 설정
-    String foodTime = (const char*) state["foodTime1"];
-    int foodTime_1 = foodTime.toInt();
-    foodTime = (const char*) state["foodTime2"];
-    int foodTime_2 = foodTime.toInt();
-    foodTime = (const char*) state["foodTime3"];
-    int foodTime_3 = foodTime.toInt();
-    foodTime = (const char*) state["foodTime4"];
-    int foodTime_4 = foodTime.toInt();
-    foodTime = (const char*) state["foodTime5"];
-    int foodTime_5 = foodTime.toInt();
+    //////////////// JSON 밥 먹는 알람 시간 ///////////////////
+    String foodTimeSet = (const char*) state["foodTime1"];
+    if (foodTime[0] != foodTimeSet.toInt()) {
+      foodTime[0] = foodTimeSet.toInt();
+      if (foodTime[0] < 0) {
+        foodHour[0] = -1;
+        foodHour[0] = -1;
+      } else {
+        foodHour[0] = foodTime[0]/60;
+        foodMin[0] = foodTime[0]%60;
+      }
+      
+      // 설정한 알람 시간에 정확히 알람 소리를 못 낼 가능성이 있음
+      // ex> 센싱 도중 or 다른 알람 소리 출력 중 등
+      // 이를 해결하기 위해 hour는 같고 min은 지났으면 알람 소리를 출력하게 함
+      // 그리고 알람을 새로 설정했을 때 시간은 같은데 분이 지났을 때 설정하고 바로 소리가 출력될 수 있어서
+      // 아래는 if문은 이를 방지하기 위한 코드임
+      if(!((foodHour[0] == timeinfo.tm_hour) && (foodMin[0] <= timeinfo.tm_min))) {
+        foodAlarmDay[0] = 0;
+      }   
+      
+    }
+
+    foodTimeSet = (const char*) state["foodTime2"];
+    if (foodTime[1] != foodTimeSet.toInt()) {
+      foodTime[1] = foodTimeSet.toInt();
+      if (foodTime[1] < 0) {
+        foodHour[1] = -1;
+        foodHour[1] = -1;
+      } else {
+        foodHour[1] = foodTime[1]/60;
+        foodMin[1] = foodTime[1]%60;
+      }
+      if(!((foodHour[1] == timeinfo.tm_hour) && (foodMin[1] <= timeinfo.tm_min))) {
+        foodAlarmDay[1] = 0;
+      }   
+      
+    }
+
+    foodTimeSet = (const char*) state["foodTime3"];
+    if (foodTime[2] != foodTimeSet.toInt()) {
+      foodTime[2] = foodTimeSet.toInt();
+      if (foodTime[2] < 0) {
+        foodHour[2] = -1;
+        foodHour[2] = -1;
+      } else {
+        foodHour[2] = foodTime[2]/60;
+        foodMin[2] = foodTime[2]%60;
+      }
+      if(!((foodHour[2] == timeinfo.tm_hour) && (foodMin[2] <= timeinfo.tm_min))) {
+        foodAlarmDay[2] = 0;
+      }
+      
+    }
+    
+    foodTimeSet = (const char*) state["foodTime4"];
+    if (foodTime[3] != foodTimeSet.toInt()) {
+      foodTime[3] = foodTimeSet.toInt();
+      if (foodTime[3] < 0) {
+        foodHour[3] = -1;
+        foodHour[3] = -1;
+      } else {
+        foodHour[3] = foodTime[3]/60;
+        foodMin[3] = foodTime[3]%60;
+      }
+      if(!((foodHour[3] == timeinfo.tm_hour) && (foodMin[3] <= timeinfo.tm_min))) {
+        foodAlarmDay[3] = 0;
+      }
+      
+    }
+    
+    foodTimeSet = (const char*) state["foodTime5"];
+    if (foodTime[4] != foodTimeSet.toInt()) {
+      foodTime[4] = foodTimeSet.toInt();
+      if (foodTime[4] < 0) {
+        foodHour[4] = -1;
+        foodHour[4] = -1;
+      } else {
+        foodHour[4] = foodTime[4]/60;
+        foodMin[4] = foodTime[4]%60;
+      }
+      if(!((foodHour[4] == timeinfo.tm_hour) && (foodMin[4] <= timeinfo.tm_min))) {
+        foodAlarmDay[4] = 0;
+      }
+      
+    }
+
+    if ((foodTime[0] != -1) || (foodTime[1] != -1) || (foodTime[2] != -1) || (foodTime[3] != -1) || (foodTime[4] != -1)) {
+      foodAlarmMode = true;
+    } else {
+      foodAlarmMode = false;
+    }
 
     // AWS-IoT에서 메세지 subscribe 끝나면
     // 그 메세지에 따라 바뀐 상태 다시 JSON 으로 publish 해줘서 shadow 바꾸기.
@@ -371,11 +433,11 @@ void loop() {
   // 센싱 완료 후 publish
   if ((sensingPublishStatus_1) || (sensingPublishStatus_2)) {
     if ((sensingPublishStatus_1)) {
-      // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_1 + sensingMin_1)
+      // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_1 * 60)
       // JSON으로 PUBLISH
       
     } else if ((sensingPublishStatus_2)) {
-      // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2 + sensingMin_2)
+      // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2 * 60)
     }
 
     // (평균 심박수 변수 + 평균 체온 변수 + 측정 시간 변수) ==> AWS로 publish
@@ -393,25 +455,25 @@ void loop() {
   if (healthStatus =="abnormal") {
     // 매일 abnormalAlarmStatus 초기화
     if (abnormalAlarmDay != timeinfo.tm_mday) {
-      int abnormalAlarmDay = timeinfo.tm_mday;
-      boolean abnormalAlarmStatus_1 = true;
-      boolean abnormalAlarmStatus_2 = true;
-      boolean abnormalAlarmStatus_3 = true;
-      boolean abnormalAlarmStatus_4 = true;
+      abnormalAlarmDay = timeinfo.tm_mday;
+      abnormalAlarmStatus[0] = true;
+      abnormalAlarmStatus[1] = true;
+      abnormalAlarmStatus[2] = true;
+      abnormalAlarmStatus[3] = true;
     }
 
-    if (((abnormalAlarmStatus_1) && abnormalHour_1 == timeinfo.tm_hour) || ((abnormalAlarmStatus_2) && abnormalHour_2 == timeinfo.tm_hour) || ((abnormalAlarmStatus_3) && abnormalHour_3 == timeinfo.tm_hour) || ((abnormalAlarmStatus_4) && abnormalHour_4 == timeinfo.tm_hour)) {
-      // 소리 알람 발생
+    if (((abnormalAlarmStatus[0]) && abnormalHour[0] == timeinfo.tm_hour) || ((abnormalAlarmStatus[1]) && abnormalHour[1] == timeinfo.tm_hour) || ((abnormalAlarmStatus[2]) && abnormalHour[2] == timeinfo.tm_hour) || ((abnormalAlarmStatus[3]) && abnormalHour[3] == timeinfo.tm_hour)) {
+      // 해당 일에 아직 발생하지 않은 소리 알람만 발생됨
       alarmPlay(abnormalAlarmMP3);  
 
-      if ((abnormalAlarmStatus_1) && abnormalHour_1 == timeinfo.tm_hour) {
-        boolean abnormalAlarmStatus_1 = false;
-      } else if ((abnormalAlarmStatus_2) && abnormalHour_2 == timeinfo.tm_hour) {
-        boolean abnormalAlarmStatus_2 = false;
-      } else if ((abnormalAlarmStatus_3) && abnormalHour_3 == timeinfo.tm_hour) {
-        boolean abnormalAlarmStatus_1 = false;
-      } else if ((abnormalAlarmStatus_4) && abnormalHour_4 == timeinfo.tm_hour) {
-        boolean abnormalAlarmStatus_1 = false;
+      if ((abnormalAlarmStatus[0]) && abnormalHour[0] == timeinfo.tm_hour) {
+        abnormalAlarmStatus[0] = false;
+      } else if ((abnormalAlarmStatus[1]) && abnormalHour[1] == timeinfo.tm_hour) {
+        abnormalAlarmStatus[1] = false;
+      } else if ((abnormalAlarmStatus[2]) && abnormalHour[2] == timeinfo.tm_hour) {
+        abnormalAlarmStatus[2] = false;
+      } else if ((abnormalAlarmStatus[3]) && abnormalHour[3] == timeinfo.tm_hour) {
+        abnormalAlarmStatus[4] = false;
       }
         
     }  // abnormal 알람 시간되면 소리 알람 발생 끝
@@ -420,43 +482,52 @@ void loop() {
   
   
   ///////////////////////////// 밥 시간 알람 ///////////////////////////////
-  if ((foodTime_1 != 0) || (foodTime_2 != 0) || (foodTime_3 != 0) || (foodTime_4 != 0) || (foodTime_5 != 0)) {
-    if (foodAlarmDay != timeinfo.tm_mday) {
-      int foodAlarmDay = timeinfo.tm_mday;
-      if (foodTime_1 != 0) {
-        boolean foodAlarmStatus_1 = true;
-      }
-      if (foodTime_2 != 0) {
-        boolean foodAlarmStatus_2 = true;
-      }
-      if (foodTime_3 != 0) {
-        boolean foodAlarmStatus_3 = true;
-      }
-      if (foodTime_4 != 0) {
-        boolean foodAlarmStatus_4 = true;
-      }
-      if (foodTime_5 != 0) {
-        boolean foodAlarmStatus_5 = true;
-      }
+  // 알람이 하나라도 설정되어 있어야만 코드 동작 (foodAlarmMode == true 일 때)
+  // 미설정된 알람은 무시 (foodTime[0] < 0)
+  if ((foodAlarmMode)) {
+    if ((foodTime[0] >= 0) && (foodTimefoodAlarmDay[0] != timeinfo.tm_mday)) {
+      foodAlarmDay = timeinfo.tm_mday;
+      foodAlarmStatus[0] = true;
+    }
+    if ((foodTime[1] >= 0) && (foodTimefoodAlarmDay[1] != timeinfo.tm_mday)) {
+      foodAlarmDay = timeinfo.tm_mday;
+      foodAlarmStatus[1] = true;
+    }
+    if ((foodTime[2] >= 0) && (foodTimefoodAlarmDay[2] != timeinfo.tm_mday)) {
+      foodAlarmDay = timeinfo.tm_mday;
+      foodAlarmStatus[2] = true;
+    }
+    if ((foodTime[3] >= 0) && (foodTimefoodAlarmDay[3] != timeinfo.tm_mday)) {
+      foodAlarmDay = timeinfo.tm_mday;
+      foodAlarmStatus[3] = true;
+    }
+    if ((foodTime[4] >= 0) && (foodTimefoodAlarmDay[4] != timeinfo.tm_mday)) {
+      foodAlarmDay = timeinfo.tm_mday;
+      foodAlarmStatus[4] = true;
     }
 
-    if (((foodAlarmStatus_1) && foodTime_1 == timeinfo.tm_hour) || ((foodAlarmStatus_2) && foodTime_2 == timeinfo.tm_hour) || ((foodAlarmStatus_3) && foodTime_3 == timeinfo.tm_hour) || ((foodAlarmStatus_4) && foodTime_4 == timeinfo.tm_hour) || ((foodAlarmStatus_5) && foodTime_5 == timeinfo.tm_hour)) {
-      // 소리 알람 발생
+    // 각 알람 시간이 되면 소리 알람 발생
+    if ((foodAlarmStatus[0]) && (foodHour[0] == timeinfo.tm_hour) && (foodMin[0] <= timeinfo.tm_min)) {
       alarmPlay(foodTimeAlarmMP3);
-
-      if ((foodAlarmStatus_1) && foodTime_1 == timeinfo.tm_hour) {
-        boolean foodAlarmStatus_1 = false;
-      } else if ((foodAlarmStatus_2) && foodTime_2 == timeinfo.tm_hour) {
-        boolean foodAlarmStatus_2 = false;
-      } else if ((foodAlarmStatus_3) && foodTime_3 == timeinfo.tm_hour) {
-        boolean foodAlarmStatus_1 = false;
-      } else if ((foodAlarmStatus_4) && foodTime_4 == timeinfo.tm_hour) {
-        boolean foodAlarmStatus_1 = false;
-      } else if ((foodAlarmStatus_4) && foodTime_4 == timeinfo.tm_hour) {
-        boolean foodAlarmStatus_2 = false;
-      }
+      foodAlarmStatus[0] = false;
       
-    } // foodTime 되면 밥달라고 소리 알람 발생 끝
+    } else if ((foodAlarmStatus[1]) && (foodHour[1] == timeinfo.tm_hour) && (foodMin[1] <= timeinfo.tm_min)) {
+      alarmPlay(foodTimeAlarmMP3);
+      foodAlarmStatus[1] = false;
+      
+    } else if ((foodAlarmStatus[2]) && (foodHour[2] == timeinfo.tm_hour) && (foodMin[2] <= timeinfo.tm_min)) {
+      alarmPlay(foodTimeAlarmMP3);
+      foodAlarmStatus[2] = false;
+      
+    } else if ((foodAlarmStatus[3]) && (foodHour[3] == timeinfo.tm_hour) && (foodMin[3] <= timeinfo.tm_min)) {
+      alarmPlay(foodTimeAlarmMP3);
+      foodAlarmStatus[3] = false;
+      
+    } else if ((foodAlarmStatus[4]) && (foodHour[4] == timeinfo.tm_hour) && (foodMin[4] <= timeinfo.tm_min)) {
+      alarmPlay(foodTimeAlarmMP3);
+      foodAlarmStatus[4] = false;
+      
+    }  // foodTime 되면 밥달라고 소리 알람 발생 끝
     
   }  // 밥 시간 알람 끝
 

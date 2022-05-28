@@ -96,8 +96,8 @@ boolean foodAlarmMode = false;
 
 
 /////////////////////////////////////////////////////////////////////////////////
-/////////////////////////// 알람 시간 선언 /////////// ////////////////////////////////
-/////// 바이탈사인 검사 시간, 건강 이상 시 소리 알람 시간, 밥 시간 (사용자 설정) ////////
+/////////////// 바이탈 사인 센싱 관련 변수 선언 /////////// ///////////////////////////
+//////////////// 평균 심박 수, 체온, 측정 시간 ///////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
 // 바이탈 사인 검사 시간
 // 오전 7시
@@ -105,6 +105,27 @@ const int sensingHour_1 = 7;
 // 오후 10시
 const int sensingHour_2 = 22;
 
+// 심박 수 측정
+const int PulseSensorPin = A0;   // A0: ESP32의 VP 핀 (Analog input)
+int Signal;                     // raw data. (센싱 데이터) Signal 값 범위: 0-4095
+const int Threshold = 2740;     // 박동 수로 판단할 Signal 최소 값. Threshold 미만이면 무시
+const int limit = 4095;         // ESP32 의 Signal 값 상한. 센서에서 손을 떼면 이 값이 읽히므로 비트가 카운트 되지 않게 하기 위해 필요.
+
+int bpmCnt = 0;                 // 심장 박동 count
+int bpm = 0;                    // (bpmCnt / 측정 기간(분)) ==> 분당 평균 심박 수
+unsigned long preMil = 0;       // 현재 시간
+
+int pulseFlag = 0;              // Signal >= Threshold: 1 , Signal < Threshold: 0
+
+boolean pulseSensingMode = false;  // while 문 내에서 3분 간 센싱이 끝나면 더 이상 센싱 x
+boolean tempSensingMode = false;   // 기본값(센싱X): false , 센싱 모드: true
+
+// 체온 측정
+
+/////////////////////////////////////////////////////////////////////////////////
+/////////////////////////// 알람 시간 선언 /////////// /////////////////////////////
+//////////////////// 건강 이상 시 소리 알람 시간, 밥 시간 (사용자 설정) //////////////////
+/////////////////////////////////////////////////////////////////////////////////
 // 건강 이상 감지 시 알람 주기
 // abnormalAlarmStatus는 매일 초기화 (abnormalAlarmDay = 0: 기본값)
 int abnormalAlarmDay = 0;
@@ -407,7 +428,9 @@ void loop() {
 
 
   ////////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////// loop 내 esp32 동작 부분 ///////////////////////////////
+  ///////////////////////////// AWS JSON Subscribe 부분 끝 ////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////// loop 내 esp32 동작 부분 시작 ////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////// 바이탈사인 검사 ///////////////////////////////
@@ -415,41 +438,81 @@ void loop() {
   // 만약 반복 센싱된다면 중간에 에러로 센싱이 끊긴 것. 다시 센싱하게 됨.
   // 센싱 시작이 제대로 안되면 day state 변수를 둬서 min을 <= 로 조건을 두고 하면 될 듯
   // 아니면 day state 변수 두고 min을 비교안하고 hour만 비교해도 될듯
-  if (((sensingHour_1 == timeinfo.tm_hour) && (sensingMin_1 == timeinfo.tm_hour)) || ((sensingHour_2 == timeinfo.tm_hour) && (sensingMin_2 == timeinfo.tm_hour))) {
+  if ((sensingHour_1 == timeinfo.tm_hour) || (sensingHour_2 == timeinfo.tm_hour)) {
     // 오전 or 오후 구분
     if (sensingHour_1 == timeinfo.tm_hour) {
       sensingPublishStatus_1 = true;
       
     } else if (sensingHour_2 == timeinfo.tm_hour) {
       sensingPublishStatus_2 = true;
-      
     }
 
-    // 센싱 코드 (심박수, 체온 timer를 둬서 3~5분간 측정 후 평균 심박수 & 평균 체온 계산해서 변수에 저장)
-    // 구현해야함.
-    
-  }
+    pulseSensingMode = true;
+    tempSensingMode = true;
 
-  // 센싱 완료 후 publish
-  if ((sensingPublishStatus_1) || (sensingPublishStatus_2)) {
-    if ((sensingPublishStatus_1)) {
-      // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_1 * 60)
-      // JSON으로 PUBLISH
+    while(true){
+      if((pulseSensingMode)) {  // 심박 수 측정
+        Signal = analogRead(PulseSensorPin);
+
+        if(Signal >= Threshold && Signal < limit) { // Signal 이 Threshold 이상이면 pulseFlag = 1 로 세팅
+          pulseFlag = 1;
+        
+        } else if (Signal < Threshold) {
+          if (pulseFlag == 1) { // pulseFlag 확인 후 1이라면 bpmCnt++
+            bpmCnt++;           // ( Signal >= Threshold --> Signal < Threshold ==> Count++)
+          
+          }        
+          pulseFlag = 0;  // pulseFlag 초기화
+                
+        }
+
+        if((millis()-preMil) > /*60000*/ 180000) { // 3분동안 센싱 후 평균 계산
+          preMil = millis();
+          bpm = bpmCnt;
+          Serial.print("심박 수 센싱 결과 BPM : ");
+          Serial.println(bpm);  // Serial monitor 에 bpm 출력하고 싶으면 주석 제거.
+          bpmCnt = 0;             // count 초기화
+          pulseSensingMode = false;
+        
+        }
+        
+        
+      }  // 심박 수 측정 부분 끝
+
+      if ((tempSensingMode)) {  // 체온 측정
+        // 구현하기 이거는 재는 시간은 이따 실험해보고 결정
+        
+
+        
+      }  // 체온 측정 부분 끝
+
+      delay(20);  // 센싱에 delay를 줘서 값 안정화에 기여
       
-    } else if ((sensingPublishStatus_2)) {
-      // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2 * 60)
-    }
+    }  // 센싱 완료
 
-    // (평균 심박수 변수 + 평균 체온 변수 + 측정 시간 변수) ==> AWS로 publish
+    // 센싱 완료 후 데이터 publish (평균 심박수: bpm , 평균 체온: temp , 측정 시간: sensingHour_1 (or _2) * 60)
+    if ((sensingPublishStatus_1) || (sensingPublishStatus_2)) {
+      if ((sensingPublishStatus_1)) {
+        // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_1 * 60)
+        // JSON으로 PUBLISH
+        
+      } else if ((sensingPublishStatus_2)) {
+        // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2 * 60)
+      }
+
+      // (평균 심박수 변수 + 평균 체온 변수 + 측정 시간 변수) ==> AWS로 publish
 
 
-    // publish 끝나고 다시 sensingPublishStatus = false 로 초기화
-    sensingPublishStatus_1 = false;
-    sensingPublishStatus_2 = false;
+      // publish 끝나고 다시 sensingPublishStatus = false 로 초기화
+      sensingPublishStatus_1 = false;
+      sensingPublishStatus_2 = false;
     
-  }
- 
+    }
+    
+    
+  }  // 바이탈사인 센싱 + publish 끝
 
+  
   ///////////////////////////// 건강 이상 주기적 알람 ///////////////////////////////
   // 바이탈 사인 이상 시 주기적 알람 (아침 저녁에 이상 상태를 aws에서 받을 때 + 점심쯤 2번
   if (healthStatus =="abnormal") {
@@ -485,24 +548,24 @@ void loop() {
   // 알람이 하나라도 설정되어 있어야만 코드 동작 (foodAlarmMode == true 일 때)
   // 미설정된 알람은 무시 (foodTime[0] < 0)
   if ((foodAlarmMode)) {
-    if ((foodTime[0] >= 0) && (foodTimefoodAlarmDay[0] != timeinfo.tm_mday)) {
-      foodAlarmDay = timeinfo.tm_mday;
+    if ((foodTime[0] >= 0) && (foodAlarmDay[0] != timeinfo.tm_mday)) {
+      foodAlarmDay[0] = timeinfo.tm_mday;
       foodAlarmStatus[0] = true;
     }
-    if ((foodTime[1] >= 0) && (foodTimefoodAlarmDay[1] != timeinfo.tm_mday)) {
-      foodAlarmDay = timeinfo.tm_mday;
+    if ((foodTime[1] >= 0) && (foodAlarmDay[1] != timeinfo.tm_mday)) {
+      foodAlarmDay[1] = timeinfo.tm_mday;
       foodAlarmStatus[1] = true;
     }
-    if ((foodTime[2] >= 0) && (foodTimefoodAlarmDay[2] != timeinfo.tm_mday)) {
-      foodAlarmDay = timeinfo.tm_mday;
+    if ((foodTime[2] >= 0) && (foodAlarmDay[2] != timeinfo.tm_mday)) {
+      foodAlarmDay[2] = timeinfo.tm_mday;
       foodAlarmStatus[2] = true;
     }
-    if ((foodTime[3] >= 0) && (foodTimefoodAlarmDay[3] != timeinfo.tm_mday)) {
-      foodAlarmDay = timeinfo.tm_mday;
+    if ((foodTime[3] >= 0) && (foodAlarmDay[3] != timeinfo.tm_mday)) {
+      foodAlarmDay[3] = timeinfo.tm_mday;
       foodAlarmStatus[3] = true;
     }
-    if ((foodTime[4] >= 0) && (foodTimefoodAlarmDay[4] != timeinfo.tm_mday)) {
-      foodAlarmDay = timeinfo.tm_mday;
+    if ((foodTime[4] >= 0) && (foodAlarmDay[4] != timeinfo.tm_mday)) {
+      foodAlarmDay[4] = timeinfo.tm_mday;
       foodAlarmStatus[4] = true;
     }
 

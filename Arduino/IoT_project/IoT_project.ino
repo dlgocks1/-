@@ -26,12 +26,17 @@
 // NTP (시간)
 #include "time.h";
 
+// 온도 센서
+#include <Wire.h>
+#include <Adafruit_MLX90614.h>
+#include <math.h>
+
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// WiFi 및 AWS-IoT Core ////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
 // AWS_IoT Shadow (이 Shadow랑 JSON + Topic 부분들은 AWS랑 맞춰서 수정해야함)
-AWS_IOT testShadow;
+AWS_IOT chichiShadow;
 
 // WiFi 설정 (본인 wifi에 맞추기)
 const char* ssid = "KT_GiGA_B366";
@@ -100,10 +105,18 @@ boolean foodAlarmMode = false;
 //////////////// 평균 심박 수, 체온, 측정 시간 ///////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
 // 바이탈 사인 검사 시간
+// 측정 월
+int sensingMonth = 0;
+
 // 오전 7시
 const int sensingHour_1 = 7;
+int sensingDay_1 = 0;
+boolean sensingMode_Day1 = false;
+
 // 오후 10시
 const int sensingHour_2 = 22;
+int sensingDay_2 = 0;
+boolean sensingMode_Day2 = false;
 
 // 심박 수 측정
 const int PulseSensorPin = A0;   // A0: ESP32의 VP 핀 (Analog input)
@@ -121,6 +134,12 @@ boolean pulseSensingMode = false;  // while 문 내에서 3분 간 센싱이 끝
 boolean tempSensingMode = false;   // 기본값(센싱X): false , 센싱 모드: true
 
 // 체온 측정
+Adafruit_MLX90614 TempSensor = Adafruit_MLX90614();
+
+float sensingTemp = 0.0;
+float temp = 0.0;
+
+
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// 알람 시간 선언 /////////// /////////////////////////////
@@ -262,11 +281,11 @@ void setup() {
   
   Serial.println("Connected to WiFi");
   
-  if(testShadow.connect(HOST_ADDRESS, CLIENT_ID) == 0) {
+  if(chichiShadow.connect(HOST_ADDRESS, CLIENT_ID) == 0) {
     Serial.println("Connected to AWS");
     delay(1000);
     
-    if(0 == testShadow.subscribe(sTOPIC_NAME, mySubCallBackHandler)) {
+    if(0 == chichiShadow.subscribe(sTOPIC_NAME, mySubCallBackHandler)) {
       Serial.println("Subscribe Successfull");
     } else {
       Serial.println("Subscribe Failed, check the Thing Name and Certificates");
@@ -290,13 +309,13 @@ void setup() {
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////// 루프 ////////////////////////////////////
 //////////// NTP 동기화 시간 타이머 (struct tm timeinfo) ////////////////
-///// AWS subscribe (shadow) (강아지 건강 상태, 밥 시간 알람 설정) ////////
+///// AWS subscribe (Shadow) (강아지 건강 상태, 밥 시간 알람 설정) ////////
 ///// AWS subscribe (센싱 데이터 (평균 심박수 + 체온 + 측정 시간) /////////
 ///////////////////////////////////////////////////////////////////////
 void loop() {
   ///////////////////// NTP 동기화 시간 타이머 //////////////////////////
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
+  if (!getLocalTime(&timeinfo)) {  // 현재 시간 받아오기 (실패하면 아래 에러 출력)
     Serial.println("Failed to obtain time");
     return;
   }
@@ -420,9 +439,15 @@ void loop() {
     }
 
     // AWS-IoT에서 메세지 subscribe 끝나면
-    // 그 메세지에 따라 바뀐 상태 다시 JSON 으로 publish 해줘서 shadow 바꾸기.
-    // publish 구현 (state만 보내면 됨)
-    
+    // 그 메세지에 따라 바뀐 상태 다시 JSON 으로 publish 해줘서 shadow 최신 정보로 동기화.
+    sprintf(payload, "{\"healthStatus\":%s, \"foodTime1\":%d, \"foodTime2\":%d, \"foodTime3\":%d, \"foodTime3\":%d, \"foodTime4\":%d, \"foodTime5\":%d}", healthStatus, foodTime[0], foodTime[1], foodTime[2], foodTime[3], foodTime[4]);
+    if (chichiShadow.publish(pTOPIC_NAME, payload) == 0) {
+      Serial.print("Publish Message (ESP32 모드 및 상태값 AWS로 전송): ");
+      Serial.println(payload);
+      
+    } else {
+      Serial.println("Publish failed");
+    }
     
   }  // if(msgReceived == 1) 끝 (delta message subscribe하는 경우 끝)
 
@@ -434,23 +459,61 @@ void loop() {
   ////////////////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////// 바이탈사인 검사 ///////////////////////////////
-  // 센싱을 3~5분 할 예정이므로 min이 같아서 반복 센싱할 경우 x
-  // 만약 반복 센싱된다면 중간에 에러로 센싱이 끊긴 것. 다시 센싱하게 됨.
-  // 센싱 시작이 제대로 안되면 day state 변수를 둬서 min을 <= 로 조건을 두고 하면 될 듯
-  // 아니면 day state 변수 두고 min을 비교안하고 hour만 비교해도 될듯
-  if ((sensingHour_1 == timeinfo.tm_hour) || (sensingHour_2 == timeinfo.tm_hour)) {
+  if ((sensingDay_1 != timeinfo.tm_mday) || (sensingDay_2 != timeinfo.tm_mday)) {
+    // 모드 설정
+    sensingDay_1 = timeinfo.tm_mday;
+    sensingMode_Day1 = true;
+    
+    sensingDay_2 = timeinfo.tm_mday;
+    sensingMode_Day2 = true;
+    
+  }
+  
+  if (((sensingMode_Day1) && (sensingHour_1 == timeinfo.tm_hour)) || ((sensingMode_Day2) && (sensingHour_2 == timeinfo.tm_hour))) {
     // 오전 or 오후 구분
     if (sensingHour_1 == timeinfo.tm_hour) {
+      sensingDay_1 = timeinfo.tm_mday;
       sensingPublishStatus_1 = true;
       
     } else if (sensingHour_2 == timeinfo.tm_hour) {
+      sensingDay_2 = timeinfo.tm_mday;
       sensingPublishStatus_2 = true;
     }
 
     pulseSensingMode = true;
     tempSensingMode = true;
 
+    sensingMonth = timeinfo.tm_mon + 1;
+
+    // 5초(체온) + 3분(심박 수) 센싱
     while(true){
+      // 센싱 끝났으면 while문 나가기
+      if (!(pulseSensingMode) && !(tempSensingMode)) {
+        break;
+      }
+
+      if ((tempSensingMode)) {  // 체온 측정
+        // 제대로 회로 구성이 안되있으면 (단선, 접촉 불량 등) 아래 에러코드 출력
+        if (!TempSensor.begin()) {
+          Serial.println("Error connecting to MLX sensor. Check wiring.");
+          while (1);
+          
+        }
+        int tempCnt = 0;
+        while(tempCnt <= 10) {  // 10회 측정 (0.5초 간격 , 총 5초)
+          sensingTemp += TempSensor.readObjectTempC();
+          tempCnt++;
+          delay(500);
+          
+        }
+        sensingTemp = sensingTemp / 10;  // 10회 측정 평균 체온 계산
+        temp = roundf(sensingTemp * 100) / 100;  // 소수점 2자리 반올림
+        sensingTemp = 0;  // sensingTemp 초기화
+        tempSensingMode = false;
+        preMil = millis();  // 타이머 시작 (바로 심박 수 센싱 시작)
+        
+      }  // 체온 측정 부분 끝
+
       if((pulseSensingMode)) {  // 심박 수 측정
         Signal = analogRead(PulseSensorPin);
 
@@ -467,52 +530,58 @@ void loop() {
         }
 
         if((millis()-preMil) > /*60000*/ 180000) { // 3분동안 센싱 후 평균 계산
-          preMil = millis();
-          bpm = bpmCnt;
+          preMil = 0;
+          bpm = bpmCnt/3;
           Serial.print("심박 수 센싱 결과 BPM : ");
           Serial.println(bpm);  // Serial monitor 에 bpm 출력하고 싶으면 주석 제거.
           bpmCnt = 0;             // count 초기화
           pulseSensingMode = false;
         
-        }
-        
+        }      
         
       }  // 심박 수 측정 부분 끝
-
-      if ((tempSensingMode)) {  // 체온 측정
-        // 구현하기 이거는 재는 시간은 이따 실험해보고 결정
-        
-
-        
-      }  // 체온 측정 부분 끝
-
+    
       delay(20);  // 센싱에 delay를 줘서 값 안정화에 기여
       
-    }  // 센싱 완료
+    }  // 센싱 완료 (while문 끝)
 
-    // 센싱 완료 후 데이터 publish (평균 심박수: bpm , 평균 체온: temp , 측정 시간: sensingHour_1 (or _2) * 60)
+    // 센싱 완료 후 데이터 publish (평균 심박수: bpm , 평균 체온: temp , 측정 시간: sensingHour_1 (or _2))
+    // 측정 월, 측정 일, 측정 시간
     if ((sensingPublishStatus_1) || (sensingPublishStatus_2)) {
+      int sensingDay = 0;
+      int sensingHour = 0;
       if ((sensingPublishStatus_1)) {
-        // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_1 * 60)
+        // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_1)
         // JSON으로 PUBLISH
+        sensingDay = sensingDay_1;
+        sensingHour = sensingHour_1;
+        
         
       } else if ((sensingPublishStatus_2)) {
-        // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2 * 60)
+        // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2)
+        sensingDay = sensingDay_2;
+        sensingHour = sensingHour_2;
+        
       }
 
-      // (평균 심박수 변수 + 평균 체온 변수 + 측정 시간 변수) ==> AWS로 publish
-
+      // (측정 시간 + 평균 심박수 + 체온) ==> AWS로 publish
+      sprintf(payload, "{\"month\":%d, \"day\":%d, \"hour\":%d, \"bpm\":%d, \"temp\":%f}", sensingMonth, sensingDay, sensingHour, bpm, temp);
+      if (chichiShadow.publish(pTOPIC_NAME, payload) == 0) {
+        Serial.print("Publish Message (센싱 결과값 AWS로 전송): ");
+        Serial.println(payload);
+      } else {
+        Serial.println("Publish failed");
+      }
 
       // publish 끝나고 다시 sensingPublishStatus = false 로 초기화
       sensingPublishStatus_1 = false;
       sensingPublishStatus_2 = false;
     
-    }
+    }  // publish 완료
     
-    
-  }  // 바이탈사인 센싱 + publish 끝
-
+  }  // 센싱 부분 + publish 부분 끝
   
+
   ///////////////////////////// 건강 이상 주기적 알람 ///////////////////////////////
   // 바이탈 사인 이상 시 주기적 알람 (아침 저녁에 이상 상태를 aws에서 받을 때 + 점심쯤 2번
   if (healthStatus =="abnormal") {

@@ -1,5 +1,6 @@
 package com.alife.protect_chichi.Service
 
+import android.util.Log
 import com.google.gson.Gson
 import retrofit2.Call
 import retrofit2.Callback
@@ -44,4 +45,49 @@ class GetHeartService {
             }
         })
     }
+
+    fun sendSignal(desired : Int)
+    {
+        val gson = Gson()
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://yh5xahjhve.execute-api.ap-northeast-2.amazonaws.com")
+            .addConverterFactory(ScalarsConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+
+        val Service = retrofit.create(GetHeartRetrofitInterface::class.java)
+        Service.sendSignal(desired).enqueue(object : Callback<GetHeartResponse> {
+            override fun onResponse(call: Call<GetHeartResponse>, response: Response<GetHeartResponse>) {
+                val resp = response.body()!!
+                haertView.onSendSignalSuccess(resp)
+            }
+
+            override fun onFailure(call: Call<GetHeartResponse>, t: Throwable) {
+                haertView.onSendSignalFailure(400, "네트워크 오류 발생")
+            }
+        })
+    }
+
+    fun sendFoodTime(foodtime : String)
+    {
+        val gson = Gson()
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://67htos9kx9.execute-api.ap-northeast-2.amazonaws.com")
+            .addConverterFactory(ScalarsConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+
+        val Service = retrofit.create(GetHeartRetrofitInterface::class.java)
+        Service.sendfood(foodtime).enqueue(object : Callback<GetHeartResponse> {
+            override fun onResponse(call: Call<GetHeartResponse>, response: Response<GetHeartResponse>) {
+                val resp = response.body()!!
+                haertView.onSendFoodTimeSuccess(resp)
+            }
+
+            override fun onFailure(call: Call<GetHeartResponse>, t: Throwable) {
+                haertView.onSendFoodTimeFailure(400, "네트워크 오류 발생")
+            }
+        })
+    }
+
 }

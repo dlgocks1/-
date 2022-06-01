@@ -1,107 +1,548 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    tools:context=".MainActivity"
-    android:orientation="vertical">
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="현재 강아지의 심박수"
-        android:textColor="@color/black"
-        android:layout_gravity="center"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:layout_marginTop="30dp"
-        />
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_marginTop="20dp"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content">
-        <com.hookedonplay.decoviewlib.DecoView
-            android:layout_width="wrap_content"
-            android:id="@+id/main_chart"
-            android:layout_height="300dp"
-            android:layout_marginHorizontal="50dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            />
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="85 bpm"
-                android:id="@+id/main_heart_tv"
-                android:textStyle="bold"
-                android:textSize="35dp"
-                />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="정상"
-                android:layout_gravity="center"
-                android:id="@+id/main_normal_tv"
-                android:layout_marginTop="10dp"
-                android:textSize="25sp"
-                android:textStyle="bold"/>
-        </LinearLayout>
-
-<!--        <ImageView-->
-<!--            android:layout_width="30dp"-->
-<!--            android:layout_height="30dp"-->
-<!--            android:src="@drawable/icon_heart"-->
-<!--            android:id="@+id/main_heart_iv"-->
-<!--            android:layout_marginTop="20dp"-->
-<!--            android:scaleType="centerCrop"-->
-<!--            android:layout_marginStart="10dp"-->
-<!--            app:layout_constraintStart_toEndOf="@id/main_heart_tv"-->
-<!--            app:layout_constraintTop_toTopOf="@id/main_heart_tv"/>-->
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginTop="10dp"
-        android:orientation="vertical">
-        <TextView
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingBottom="20dp"
+        tools:context=".MainActivity">
+
+        <LinearLayout
+            android:id="@+id/main_heart_bt_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:orientation="vertical">
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/main_heart_bt"
+                android:layout_width="wrap_content"
+                android:layout_height="50dp"
+                android:layout_gravity="center"
+                android:background="@color/green"
+                android:gravity="center"
+                android:paddingHorizontal="20dp"
+                android:text="실시간 심장 박동 수 활성화"
+                android:textColor="@color/white" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/heartSignal_layout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="00 이상 흥분 상태"/>
-        <TextView
-            android:layout_width="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
+
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="20dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:text="현재 강아지 체온 : "
+                    android:textColor="@color/black"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/main_temp_tv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:text="00 도"
+                    android:textColor="@color/black"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="30dp"
+                android:text="현재 강아지의 심박수"
+                android:textColor="@color/black"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp">
+
+                <com.hookedonplay.decoviewlib.DecoView
+                    android:id="@+id/main_chart"
+                    android:layout_width="wrap_content"
+                    android:layout_height="300dp"
+                    android:layout_marginHorizontal="50dp"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <TextView
+                        android:id="@+id/main_heart_tv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="측정중..."
+                        android:textSize="35dp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/main_normal_tv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:layout_marginTop="10dp"
+                        android:text=" "
+                        android:textSize="25sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!--        <ImageView-->
+                <!--            android:layout_width="30dp"-->
+                <!--            android:layout_height="30dp"-->
+                <!--            android:src="@drawable/icon_heart"-->
+                <!--            android:id="@+id/main_heart_iv"-->
+                <!--            android:layout_marginTop="20dp"-->
+                <!--            android:scaleType="centerCrop"-->
+                <!--            android:layout_marginStart="10dp"-->
+                <!--            app:layout_constraintStart_toEndOf="@id/main_heart_tv"-->
+                <!--            app:layout_constraintTop_toTopOf="@id/main_heart_tv"/>-->
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="140 이상 흥분 상태" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="100 ~ 140 보통 상태" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="100 이하 낮음 상태" />
+
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="30dp"
+                android:text="지난 일주일간 심박수 평균"
+                android:textColor="@color/black"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <com.github.mikephil.charting.charts.BarChart
+                android:id="@+id/main_week_chart"
+                android:layout_width="match_parent"
+                android:layout_height="250dp"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="20dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="30dp"
+                android:text="강아지 상태 현황"
+                android:textColor="@color/black"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_marginTop="30dp"
+                android:layout_gravity="center"
+                android:layout_marginHorizontal="20dp"
+                android:layout_height="wrap_content">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="지난주 평균 과 비교해 "
+                    android:textColor="@color/black"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:id="@+id/main_heart_state_tv"
+                    android:text="00%"
+                    android:textColor="@color/green"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="만큼 변화했어요."
+                android:textColor="@color/black"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:layout_gravity="center"
+                android:text="지속적인 변화가 예측되면 병원에 가보세요." />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="30dp"
+                android:text="최근 심박 수"
+                android:textColor="@color/black"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <com.github.mikephil.charting.charts.LineChart
+                android:id="@+id/main_recent_chart"
+                android:layout_width="match_parent"
+                android:layout_height="250dp"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="20dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="00 ~ 00 보통 상태"/>
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="00 이하 낮음 상태"/>
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="30dp"
+                android:text="밥 알람 설정"
+                android:textColor="@color/black"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="100dp"
+                    android:layout_gravity="center"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:text="알람 1 "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="10dp"
+                        android:gravity="center"
+                        android:text="시간 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_hour_picker1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="30dp"
+                        android:gravity="center"
+                        android:text="분 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_minute_picker1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <CheckBox
+                        android:id="@+id/main_alarm1_cb"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="100dp"
+                    android:layout_gravity="center"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:text="알람 2 "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="10dp"
+                        android:gravity="center"
+                        android:text="시간 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_hour_picker2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="30dp"
+                        android:gravity="center"
+                        android:text="분 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_minute_picker2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <CheckBox
+                        android:id="@+id/main_alarm2_cb"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="100dp"
+                    android:layout_gravity="center"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:text="알람 3 "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="10dp"
+                        android:gravity="center"
+                        android:text="시간 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_hour_picker3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="30dp"
+                        android:gravity="center"
+                        android:text="분 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_minute_picker3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <CheckBox
+                        android:id="@+id/main_alarm3_cb"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="100dp"
+                    android:layout_gravity="center"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:text="알람 4 "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="10dp"
+                        android:gravity="center"
+                        android:text="시간 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_hour_picker4"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="30dp"
+                        android:gravity="center"
+                        android:text="분 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_minute_picker4"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <CheckBox
+                        android:id="@+id/main_alarm4_cb"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="100dp"
+                    android:layout_gravity="center"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:text="알람 5 "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="10dp"
+                        android:gravity="center"
+                        android:text="시간 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_hour_picker5"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:layout_marginStart="30dp"
+                        android:gravity="center"
+                        android:text="분 : "
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <NumberPicker
+                        android:id="@+id/time_minute_picker5"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:selectionDividerHeight="0dp" />
+
+                    <CheckBox
+                        android:id="@+id/main_alarm5_cb"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/main_alarm_set_bt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="알람 설정 하기" />
+
+        </LinearLayout>
+
 
     </LinearLayout>
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="이전 심박수"
-        android:layout_gravity="center"
-        android:textColor="@color/black"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:layout_marginTop="30dp"
-        />
-
-</LinearLayout>
+</androidx.core.widget.NestedScrollView>

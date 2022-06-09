@@ -1,6 +1,7 @@
 package com.alife.protect_chichi
 
 import android.graphics.Color
+import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
@@ -8,6 +9,7 @@ import android.view.View
 import android.widget.CheckBox
 import android.widget.NumberPicker
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import com.alife.protect_chichi.Service.GetHeartResponse
 import com.alife.protect_chichi.Service.GetHeartService
 import com.alife.protect_chichi.Service.getHeartView
@@ -41,6 +43,7 @@ import com.github.mikephil.charting.utils.ColorTemplate
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
 import java.lang.Math.round
+import kotlin.math.roundToInt
 
 
 class MainActivity : AppCompatActivity(), getHeartView {
@@ -52,15 +55,14 @@ class MainActivity : AppCompatActivity(), getHeartView {
     private var weeklyHeartrateaverage = 0f
     lateinit var getHeartThread : GetHeartThread
     private lateinit var binding: ActivityMainBinding
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         heartService.setgetisLikeView(this)
-
         getHeartThread = GetHeartThread()
         getHeartThread.start()
         initView()
-//        getHeartRate()
         setContentView(binding.root)
     }
 
@@ -75,7 +77,6 @@ class MainActivity : AppCompatActivity(), getHeartView {
             while(true){
                 if(getheartRateThread){
                     sleep(10000)
-                    Log.d("test","심장 박동 요구 전송")
                     runOnUiThread{
                         getHeartRate()
                     }
@@ -84,13 +85,12 @@ class MainActivity : AppCompatActivity(), getHeartView {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun getHeartRate() {
         val current = LocalDateTime.now()
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         val formatted = current.format(formatter)
-//        Log.d("test","Current Date and Time is: $formatted")
         heartService.getHeartRate("{\"time\":\"${formatted}\"}")
-
     }
 
     private fun initView() {
@@ -106,15 +106,11 @@ class MainActivity : AppCompatActivity(), getHeartView {
             .setLineWidth(50f)
             .build()
 
-        val series1Index: Int = binding.mainChart.addSeries(seriesItem1)
-//        binding.mainChart.addEvent(DecoEvent.Builder(58f)
-//            .setIndex(series1Index)
-//            .build())
+//        val series1Index: Int = binding.mainChart.addSeries(seriesItem1)
         // 시작하기 버튼 눌리면 플래그 활성화
         binding.heartSignalLayout.visibility = View.GONE
         binding.mainHeartBt.setOnClickListener {
             if(!getheartRateThread){
-//                getHeartRate()
                 binding.mainHeartBt.text = "실시간 심장 박동 수 비활성화"
                 binding.heartSignalLayout.visibility = View.VISIBLE
                 heartService.sendSignal(1)
@@ -126,7 +122,6 @@ class MainActivity : AppCompatActivity(), getHeartView {
                 getheartRateThread = false
             }
         }
-
 
         // 밥 타임 데이터
         val timeHourList = arrayListOf<NumberPicker>()
@@ -179,8 +174,6 @@ class MainActivity : AppCompatActivity(), getHeartView {
             foodTimeDataList.clear()
             Toast.makeText(this,"알람을 설정하였습니다.",Toast.LENGTH_SHORT).show()
         }
-
-
     }
 
     override fun onSuccess(result: GetHeartResponse) {
@@ -215,7 +208,7 @@ class MainActivity : AppCompatActivity(), getHeartView {
 
             // 가장 최근 5회 심박 수 가져와서 뛰위기
             val entries: ArrayList<Entry> = ArrayList()
-            for(i in jsonArray.length()-5 until jsonArray.length()){
+            for(i in jsonArray.length()-8 until jsonArray.length()){
                 val subJsonObject = jsonArray.getJSONObject(i)
                 entries.add(Entry(i.toFloat(),subJsonObject.getString("bpm").toFloat()))
             }
@@ -232,7 +225,7 @@ class MainActivity : AppCompatActivity(), getHeartView {
             binding.mainRecentChart.setScaleEnabled(false) //Zoom In/Out
             binding.mainRecentChart.axisRight.isEnabled = false
             binding.mainRecentChart.invalidate()
-//            binding.mainRecentChart.animateY(1000)
+
 
             // 실시간 심박 수
             val subJsonObject = jsonArray.getJSONObject(jsonArray.length()-1)
@@ -240,10 +233,11 @@ class MainActivity : AppCompatActivity(), getHeartView {
             if(nowheartRate.toFloat() >=199f){
                 nowheartRate= 199.toString()
             }
-            binding.mainHeartTv.text = "${nowheartRate}bpm"
+            binding.mainHeartTv.text = "${nowheartRate} bpm"
             binding.mainTempTv.text = "${subJsonObject.getString("temp")}°C"
-            binding.mainHeartStateTv.text = "${round(subJsonObject.getString("temp").toFloat() / (subJsonObject.getString("temp").toFloat() + weeklyHeartrateaverage) * 100f)}%"
-
+            binding.mainHeartStateTv.text = " ${round(subJsonObject.getString("bpm").toFloat() / (subJsonObject.getString("bpm").toFloat() + weeklyHeartrateaverage) * 100f)}%"
+            binding.mainHeartLastweekTv.text ="지난주 평균(${weeklyHeartrateaverage.toFloat().roundToInt()})과 비교해 현재 "
+            
             if(nowheartRate.toInt()<100){
                 binding.mainNormalTv.text = "너무 낮아요"
             }else if(nowheartRate.toInt()<140){
@@ -251,7 +245,7 @@ class MainActivity : AppCompatActivity(), getHeartView {
             }else{
                 binding.mainNormalTv.text = "너무 높아요"
             }
-            val seriesItem1 = SeriesItem.Builder(Color.parseColor("#9b111e"))
+            val seriesItem1 = SeriesItem.Builder(Color.parseColor("#FE848A"))
                 .setRange(0f, 200f, heartRate)
                 .setLineWidth(50f)
                 .build()

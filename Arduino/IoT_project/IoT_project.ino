@@ -7,7 +7,7 @@
 #include <Arduino_JSON.h>
 
 // 앰프+스피커 출력 (mp3파일을 ESP32의 SPIFFS (DAC 저장장치)에 저장 후 출력 (음성 출력 가능)
-#define MP3_FILENAME_1 "/iotFoodTimeSound.mp3"
+#define MP3_FILENAME_1 "/iotAbnormalAlarmSound.mp3"
 #define MP3_FILENAME_2 "/iotNormalAlarmSound.mp3"
 #define MP3_FILENAME_3 "/iotFoodTimeSound.mp3"
 
@@ -23,8 +23,10 @@
 #include "AudioOutputI2SNoDAC.h"
 #include "AudioOutputI2S.h"
 
-// NTP (시간)
+// NTP (시간), 딥슬립 타이머
 #include "time.h";
+
+#define BUTTON_PIN_BITMASK 0x200000000 // 2^33 in hex
 
 // 온도 센서
 #include <Wire.h>
@@ -32,21 +34,22 @@
 #include <math.h>
 
 
+
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// WiFi 및 AWS-IoT Core ////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
-// AWS_IoT Shadow (이 Shadow랑 JSON + Topic 부분들은 AWS랑 맞춰서 수정해야함)
+// AWS_IoT
 AWS_IOT chichiShadow;
 
 // WiFi 설정 (본인 wifi에 맞추기)
-const char* ssid = "KT_GiGA_B366";
-const char* password = "dga27xh293";
+const char* ssid = "seed";
+const char* password = "seed0518";
 
 // Team AWS Thing
 char HOST_ADDRESS[] = "a28y105is1rb18-ats.iot.ap-northeast-2.amazonaws.com";
-char CLIENT_ID[] = "chichi_save";
-char sTOPIC_NAME[] = "chichi_save/up";
-char pTOPIC_NAME[] = "chichi_save/down";
+char CLIENT_ID[] = "chichi_save/download";
+char sTOPIC_NAME[] = "chichi_save/download";
+char pTOPIC_NAME[] = "chichi_save/upload";
 
 int status = WL_IDLE_STATUS;
 int msgCount = 0;
@@ -82,6 +85,11 @@ const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 3600*9;
 const int daylightOffset_sec = 0;
 
+// deep sleep
+// uint64_t == unsigned long long
+//const uint64_t uS_TO_S_FACTOR = 1000000;  // 곱해서 ms를 sec로 바꿔줌
+//uint64_t TIME_TO_SLEEP;
+
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// 상태 변수 ////////////////////////////////////////////
@@ -99,6 +107,11 @@ boolean sensingPublishStatus_2 = false;
 // 밥 시간 알람 모드 (기본값(알람이 모두 미설정): false, 하나라도 설정: true)
 boolean foodAlarmMode = false;
 
+// readNow (실시간 센싱모드)
+// 기본: false , 실시간 센싱: true
+boolean sensingNow = false;
+
+
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////// 바이탈 사인 센싱 관련 변수 선언 /////////// ///////////////////////////
@@ -114,14 +127,14 @@ int sensingDay_1 = 0;
 boolean sensingMode_Day1 = false;
 
 // 오후 10시
-const int sensingHour_2 = 22;
+const int sensingHour_2 = 2;
 int sensingDay_2 = 0;
 boolean sensingMode_Day2 = false;
 
 // 심박 수 측정
 const int PulseSensorPin = A0;   // A0: ESP32의 VP 핀 (Analog input)
 int Signal;                     // raw data. (센싱 데이터) Signal 값 범위: 0-4095
-const int Threshold = 2740;     // 박동 수로 판단할 Signal 최소 값. Threshold 미만이면 무시
+const int Threshold = /*2740*/3000;     // 박동 수로 판단할 Signal 최소 값. Threshold 미만이면 무시
 const int limit = 4095;         // ESP32 의 Signal 값 상한. 센서에서 손을 떼면 이 값이 읽히므로 비트가 카운트 되지 않게 하기 위해 필요.
 
 int bpmCnt = 0;                 // 심장 박동 count
@@ -136,9 +149,8 @@ boolean tempSensingMode = false;   // 기본값(센싱X): false , 센싱 모드:
 // 체온 측정
 Adafruit_MLX90614 TempSensor = Adafruit_MLX90614();
 
-float sensingTemp = 0.0;
+// float sensingTemp = 0.0;
 float temp = 0.0;
-
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -173,8 +185,12 @@ int foodMin[5] = {-1, -1, -1, -1, -1};
 void mySubCallBackHandler(char* topicName, int payloadLen, char* payLoad) {
   strncpy(rcvdPayload, payLoad, payloadLen);
   rcvdPayload[payloadLen] = 0;
-  msgReceived = 1;
   
+  // 테스트 코드
+  Serial.print("test: 구독한 토픽 (1: upload , 2: falg): ");
+  msgReceived = 1;
+  Serial.println(msgReceived);
+  Serial.println("test: 이 윗줄에 1 또는 2가 나왔어야 성공");
 }
 
 // 앰프+스피커 출력 Callback 함수 (metadata event occurs)
@@ -197,6 +213,23 @@ void MDCallback(void *cbData, const char *type, bool isUnicode, const char *stri
   Serial.printf("'\n");
   Serial.flush();
 }
+//
+//// Wake up 된 이유 출력.
+//void print_wakeup_reason() {
+//  esp_sleep_wakeup_cause_t wakeup_reason;
+//  wakeup_reason = esp_sleep_get_wakeup_cause();
+//
+//  switch(wakeup_reason) {
+//    // 사용자가 스위치를 눌러서 깨운 경우 아래 메세지만 출력되어야 함.
+//    case ESP_SLEEP_WAKEUP_EXT0: Serial.println("스위치를 눌러서 깨어남"); break;
+//    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+//    // Timer 인 경우는 아래 메세지만 출력되어야 함.
+//    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("타이머에 의해 깨어남"); break;
+//    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+//    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+//    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+//  }
+//}
 
 
 ///////////////////////////////////////////////////////////////////////////
@@ -329,136 +362,260 @@ void loop() {
 
     // Parse JSON
     JSONVar myObj = JSON.parse(rcvdPayload);
-    JSONVar state = myObj["state"];
+    String messageVar = (const char*) myObj["message"];
 
-    //////////////// JSON 바이탈사인 정상 or 이상 ///////////////////
-    String healthStatus = (const char*) state["healthStatus"];
-    Serial.print("Dog's Heart Beat is ");
-    Serial.print(healthStatus);
-
-    // 바이탈 사인이 이상할 경우 & 정상일 경우 각각 음성 메세지 출력
-    if(healthStatus == "abnormal") {
-      alarmPlay(abnormalAlarmMP3);
-    } else if (healthStatus == "normal") {
-      alarmPlay(normalAlarmMP3);
-      abnormalAlarmDay = 0;  // abnormal 알람 설정 초기화 (다시 abnormal 상태가 될 때 충돌 방지)
+    if (messageVar == "stateMessage") {  // 건강 상태 메세지
+      String healthStatus = (const char*) myObj["status"];
       
-    }
-    
-    //////////////// JSON 밥 먹는 알람 시간 ///////////////////
-    String foodTimeSet = (const char*) state["foodTime1"];
-    if (foodTime[0] != foodTimeSet.toInt()) {
-      foodTime[0] = foodTimeSet.toInt();
-      if (foodTime[0] < 0) {
-        foodHour[0] = -1;
-        foodHour[0] = -1;
+      Serial.print("Dog's Heart Beat is ");
+      Serial.print(healthStatus);
+      // 테스트 코드
+      Serial.println("test: 이 위에 abnormal이나 normal이 나왔어야 성공");
+
+      // 바이탈 사인이 이상할 경우 & 정상일 경우 각각 음성 메세지 출력
+      if(healthStatus == "abnormal") {
+        alarmPlay(abnormalAlarmMP3);
+        // 테스트 코드
+        Serial.println("test: 앞에서 abnormal 알람이 울렸어야 성공");
+      } else if (healthStatus == "normal") {
+        alarmPlay(normalAlarmMP3);
+        abnormalAlarmDay = 0;  // abnormal 알람 설정 초기화 (다시 abnormal 상태가 될 때 충돌 방지)
+        Serial.println("이 앞에서 normal 알람이 울렸어야 성공");
+      
+      }
+
+    } else if (messageVar == "nowMessage") {  // 실시간 측정 메세지
+      String readNow = (const char*) myObj["readNow"];
+
+      // 테스트 코드
+      Serial.print("JSON으로 받아온 readNow 값: ");
+      Serial.println(readNow);
+      
+      if (readNow == "0") {  // 실시간 측정 모드 OFF
+        sensingNow = false;
+
+        // 테스트 코드
+        Serial.println("test: 실시간 측정 모드 OFF");
+      
+      } else if (readNow == "1") {  // 실시간 측정 모드 ON
+        sensingNow = true;
+
+        // 테스트 코드
+        Serial.println("test: 실시간 측정 모드 ON");
+      }
+
+      // 테스트 코드
+      Serial.println("test: 이 위에 실시간 측정 모드 ON or OFF 가 나왔어야 성공");
+      
+    } else if (messageVar == "foodMessage") {  // 밥 시간 알람 설정
+      String foodTimeSet = (const char*) myObj["foodTime1"];
+      if (foodTime[0] != foodTimeSet.toInt()) {
+        foodTime[0] = foodTimeSet.toInt();
+        if (foodTime[0] < 0) {
+          foodHour[0] = -1;
+          foodMin[0] = -1;
+        } else {
+          foodHour[0] = foodTime[0]/60;
+          foodMin[0] = foodTime[0]%60;
+        }
+      
+        // 설정한 알람 시간에 정확히 알람 소리를 못 낼 가능성이 있음
+        // ex> 센싱 도중 or 다른 알람 소리 출력 중 등
+        // 이를 해결하기 위해 hour는 같고 min은 지났으면 알람 소리를 출력하게 함
+        // 그리고 알람을 새로 설정했을 때 시간은 같은데 분이 지났을 때 설정하고 바로 소리가 출력될 수 있어서
+        // 아래는 if문은 이를 방지하기 위한 코드임
+        if(!((foodHour[0] == timeinfo.tm_hour) && (foodMin[0] <= timeinfo.tm_min))) {
+          foodAlarmDay[0] = 0;
+        } 
+        
+      } // foodTime 1번 알람 세팅
+
+      foodTimeSet = (const char*) myObj["foodTime2"];
+      if (foodTime[1] != foodTimeSet.toInt()) {
+        foodTime[1] = foodTimeSet.toInt();
+        if (foodTime[1] < 0) {
+          foodHour[1] = -1;
+          foodMin[1] = -1;
+        } else {
+          foodHour[1] = foodTime[1]/60;
+          foodMin[1] = foodTime[1]%60;
+        }
+        if(!((foodHour[1] == timeinfo.tm_hour) && (foodMin[1] <= timeinfo.tm_min))) {
+          foodAlarmDay[1] = 0;
+        }   
+      
+      } // foodTime 2번 알람 세팅
+
+      foodTimeSet = (const char*) myObj["foodTime3"];
+      if (foodTime[2] != foodTimeSet.toInt()) {
+        foodTime[2] = foodTimeSet.toInt();
+        if (foodTime[2] < 0) {
+          foodHour[2] = -1;
+          foodMin[2] = -1;
+        } else {
+          foodHour[2] = foodTime[2]/60;
+          foodMin[2] = foodTime[2]%60;
+        }
+        if(!((foodHour[2] == timeinfo.tm_hour) && (foodMin[2] <= timeinfo.tm_min))) {
+          foodAlarmDay[2] = 0;
+        }
+      
+      }  // foodTime 3번 알람 세팅
+
+      foodTimeSet = (const char*) myObj["foodTime4"];
+      if (foodTime[3] != foodTimeSet.toInt()) {
+        foodTime[3] = foodTimeSet.toInt();
+        if (foodTime[3] < 0) {
+          foodHour[3] = -1;
+          foodMin[3] = -1;
+        } else {
+          foodHour[3] = foodTime[3]/60;
+          foodMin[3] = foodTime[3]%60;
+        }
+        if(!((foodHour[3] == timeinfo.tm_hour) && (foodMin[3] <= timeinfo.tm_min))) {
+          foodAlarmDay[3] = 0;
+        }
+      
+      }  // foodTime 4번 알람 세팅
+
+      foodTimeSet = (const char*) myObj["foodTime5"];
+      if (foodTime[4] != foodTimeSet.toInt()) {
+        foodTime[4] = foodTimeSet.toInt();
+        if (foodTime[4] < 0) {
+          foodHour[4] = -1;
+          foodMin[4] = -1;
+        } else {
+          foodHour[4] = foodTime[4]/60;
+          foodMin[4] = foodTime[4]%60;
+        }
+        if(!((foodHour[4] == timeinfo.tm_hour) && (foodMin[4] <= timeinfo.tm_min))) {
+          foodAlarmDay[4] = 0;
+        }
+      
+      }  // foodTime 5번 알람 세팅
+
+      if ((foodTime[0] != -1) || (foodTime[1] != -1) || (foodTime[2] != -1) || (foodTime[3] != -1) || (foodTime[4] != -1)) {
+        foodAlarmMode = true;
       } else {
-        foodHour[0] = foodTime[0]/60;
-        foodMin[0] = foodTime[0]%60;
+        foodAlarmMode = false;
       }
-      
-      // 설정한 알람 시간에 정확히 알람 소리를 못 낼 가능성이 있음
-      // ex> 센싱 도중 or 다른 알람 소리 출력 중 등
-      // 이를 해결하기 위해 hour는 같고 min은 지났으면 알람 소리를 출력하게 함
-      // 그리고 알람을 새로 설정했을 때 시간은 같은데 분이 지났을 때 설정하고 바로 소리가 출력될 수 있어서
-      // 아래는 if문은 이를 방지하기 위한 코드임
-      if(!((foodHour[0] == timeinfo.tm_hour) && (foodMin[0] <= timeinfo.tm_min))) {
-        foodAlarmDay[0] = 0;
-      }   
-      
-    }
 
-    foodTimeSet = (const char*) state["foodTime2"];
-    if (foodTime[1] != foodTimeSet.toInt()) {
-      foodTime[1] = foodTimeSet.toInt();
-      if (foodTime[1] < 0) {
-        foodHour[1] = -1;
-        foodHour[1] = -1;
-      } else {
-        foodHour[1] = foodTime[1]/60;
-        foodMin[1] = foodTime[1]%60;
-      }
-      if(!((foodHour[1] == timeinfo.tm_hour) && (foodMin[1] <= timeinfo.tm_min))) {
-        foodAlarmDay[1] = 0;
-      }   
+      // 테스트 코드
+      Serial.println("test: 테스트를 위해 대표적으로 foodTime 1 알람만 테스트");
+      Serial.print("test: food 알람 1번: ");
+      Serial.println(foodHour[0]);
+      Serial.println("test: 이 위에서 1번 알람 설정한거 시간이 나왔어야 성공");
+      Serial.println("test: JSON 감지 끝");
       
-    }
+       
+    }  
 
-    foodTimeSet = (const char*) state["foodTime3"];
-    if (foodTime[2] != foodTimeSet.toInt()) {
-      foodTime[2] = foodTimeSet.toInt();
-      if (foodTime[2] < 0) {
-        foodHour[2] = -1;
-        foodHour[2] = -1;
-      } else {
-        foodHour[2] = foodTime[2]/60;
-        foodMin[2] = foodTime[2]%60;
-      }
-      if(!((foodHour[2] == timeinfo.tm_hour) && (foodMin[2] <= timeinfo.tm_min))) {
-        foodAlarmDay[2] = 0;
-      }
-      
-    }
-    
-    foodTimeSet = (const char*) state["foodTime4"];
-    if (foodTime[3] != foodTimeSet.toInt()) {
-      foodTime[3] = foodTimeSet.toInt();
-      if (foodTime[3] < 0) {
-        foodHour[3] = -1;
-        foodHour[3] = -1;
-      } else {
-        foodHour[3] = foodTime[3]/60;
-        foodMin[3] = foodTime[3]%60;
-      }
-      if(!((foodHour[3] == timeinfo.tm_hour) && (foodMin[3] <= timeinfo.tm_min))) {
-        foodAlarmDay[3] = 0;
-      }
-      
-    }
-    
-    foodTimeSet = (const char*) state["foodTime5"];
-    if (foodTime[4] != foodTimeSet.toInt()) {
-      foodTime[4] = foodTimeSet.toInt();
-      if (foodTime[4] < 0) {
-        foodHour[4] = -1;
-        foodHour[4] = -1;
-      } else {
-        foodHour[4] = foodTime[4]/60;
-        foodMin[4] = foodTime[4]%60;
-      }
-      if(!((foodHour[4] == timeinfo.tm_hour) && (foodMin[4] <= timeinfo.tm_min))) {
-        foodAlarmDay[4] = 0;
-      }
-      
-    }
-
-    if ((foodTime[0] != -1) || (foodTime[1] != -1) || (foodTime[2] != -1) || (foodTime[3] != -1) || (foodTime[4] != -1)) {
-      foodAlarmMode = true;
-    } else {
-      foodAlarmMode = false;
-    }
-
-    // AWS-IoT에서 메세지 subscribe 끝나면
-    // 그 메세지에 따라 바뀐 상태 다시 JSON 으로 publish 해줘서 shadow 최신 정보로 동기화.
-    sprintf(payload, "{\"healthStatus\":%s, \"foodTime1\":%d, \"foodTime2\":%d, \"foodTime3\":%d, \"foodTime3\":%d, \"foodTime4\":%d, \"foodTime5\":%d}", healthStatus, foodTime[0], foodTime[1], foodTime[2], foodTime[3], foodTime[4]);
-    if (chichiShadow.publish(pTOPIC_NAME, payload) == 0) {
-      Serial.print("Publish Message (ESP32 모드 및 상태값 AWS로 전송): ");
-      Serial.println(payload);
-      
-    } else {
-      Serial.println("Publish failed");
-    }
     
   }  // if(msgReceived == 1) 끝 (delta message subscribe하는 경우 끝)
 
-
+ 
   ////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////// AWS JSON Subscribe 부분 끝 ////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////// loop 내 esp32 동작 부분 시작 ////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////
 
-  ///////////////////////////// 바이탈사인 검사 ///////////////////////////////
+  ///////////////////////////// 바이탈사인 검사 (실시간) ///////////////////////////////
+  if ((sensingNow)) {
+    Serial.println("test: 실시간 검사모드입니데이");
+    float nowTemp = 0.0;
+    // int tempCnt = 0;
+    // float sensingTemp = 0.0;
+    delay(300);
+
+    // 테스트 코드
+    Serial.println("test: 실시간 검사 시작");
+    Serial.println("test: 체온 측정 시작");
+    
+    while (tempCnt < 5) {  // 실시간 검사 (신속성을 위해 4번만 측정 (2.0초 소요)
+      sensingTemp += TempSensor.readObjectTempC();
+      tempCnt++;
+      delay(500);
+      
+    }  // 체온 측정 while 끝
+    
+    // 4회 측정 평균 체온 계산 (소수점 2자리 반올림)
+    nowTemp = roundf((nowTemp / 4) * 100) / 100;
+    
+//    // 오버플로우 대책
+//    delay(20);
+//    nowTemp = 37.3;
+//    delay(500);
+
+    // 테스트 코드
+    Serial.println("test: 심박수 측정 시작");
+
+    unsigned long preMil_Now = millis();
+    int nowBpm = 0;
+    int nowBpmCnt = 0;
+    
+    while(true) {  // 심박 수 측정
+      Signal = analogRead(PulseSensorPin);
+
+      if (Signal >= Threshold && Signal < limit) {  // Signal이 Threshold 이상이면 pulseFlag = 1 로 세팅
+        pulseFlag = 1;
+        
+      } else if (Signal < Threshold) {
+        if (pulseFlag == 1) {
+          nowBpmCnt++;
+          
+        }
+        pulseFlag = 0;  // pulseFlag 초기화
+        
+      }
+
+      if ((millis()-preMil_Now > 6000)) {  // 6초동안 센싱 후 평균 분당 심박수 예측 계산
+        preMil_Now = 0;
+        nowBpm = nowBpmCnt*10;
+        Serial.print("실시간 심박 수 센싱 결과 BPM: ");
+        Serial.println(nowBpm);
+        nowBpmCnt = 0;
+        break;
+        
+      }
+      
+    }  // 심박 수 측정 while 끝
+
+    // nowTemp, nowBpm publish
+    // 측정 시간 + 평균 심박수 + 체온
+    int nowSensingMon = timeinfo.tm_mon + 1;
+    int nowSensingDay = timeinfo.tm_mday;
+    int nowSensingHour = timeinfo.tm_hour;
+
+    // 테스트 코드
+    Serial.println("test: 실시간 센싱 결과 전송 시작");
+
+    
+    sprintf(payload, "{\"month\":%d, \"day\":%d, \"hour\":%d, \"bpm\":%d, \"temp\":%f}", nowSensingMon, nowSensingDay, nowSensingHour, nowBpm, nowTemp);
+    while(true) {
+      delay(500);
+      if (chichiShadow.publish(pTOPIC_NAME, payload) == 0) {
+        Serial.print("Publish Message (실시간 센싱 결과값 AWS로 전송): ");
+        Serial.println(payload);
+        break;
+      } else {
+        Serial.println("Publish failed");
+        delay(500);
+      }
+    }
+    
+
+    nowBpm = 0;
+    nowTemp = 0;
+
+    // 테스트 코드
+    Serial.println("test: 이 위에 전송한 JSON 나왔어야 성공");
+    
+  }  // 실시간 센싱 + publish 완료
+  // while문으로 묶기
+
+
+  ///////////////////////////// 바이탈사인 검사 (주기) ///////////////////////////////
   if ((sensingDay_1 != timeinfo.tm_mday) || (sensingDay_2 != timeinfo.tm_mday)) {
     // 모드 설정
     sensingDay_1 = timeinfo.tm_mday;
@@ -480,27 +637,34 @@ void loop() {
       sensingPublishStatus_2 = true;
     }
 
+    sensingMonth = timeinfo.tm_mon + 1;
     pulseSensingMode = true;
     tempSensingMode = true;
+    
 
-    sensingMonth = timeinfo.tm_mon + 1;
 
     // 5초(체온) + 3분(심박 수) 센싱
-    while(true){
+    while((pulseSensingMode) || (tempSensingMode)){
       // 센싱 끝났으면 while문 나가기
       if (!(pulseSensingMode) && !(tempSensingMode)) {
+        
+        // test code
+        Serial.println("test: 주기적 센싱 끝");
+        
         break;
       }
 
       if ((tempSensingMode)) {  // 체온 측정
+        float sensingTemp = 0.0;
         // 제대로 회로 구성이 안되있으면 (단선, 접촉 불량 등) 아래 에러코드 출력
         if (!TempSensor.begin()) {
           Serial.println("Error connecting to MLX sensor. Check wiring.");
           while (1);
           
         }
+        delay(300);
         int tempCnt = 0;
-        while(tempCnt <= 10) {  // 10회 측정 (0.5초 간격 , 총 5초)
+        while(tempCnt < 10) {  // 10회 측정 (0.5초 간격 , 총 5초)
           sensingTemp += TempSensor.readObjectTempC();
           tempCnt++;
           delay(500);
@@ -514,32 +678,37 @@ void loop() {
         
       }  // 체온 측정 부분 끝
 
-      if((pulseSensingMode)) {  // 심박 수 측정
-        Signal = analogRead(PulseSensorPin);
+      while(true) {
+        if((pulseSensingMode)) {  // 심박 수 측정
+          Signal = analogRead(PulseSensorPin);
 
-        if(Signal >= Threshold && Signal < limit) { // Signal 이 Threshold 이상이면 pulseFlag = 1 로 세팅
-          pulseFlag = 1;
+          if(Signal >= Threshold && Signal < limit) { // Signal 이 Threshold 이상이면 pulseFlag = 1 로 세팅
+            pulseFlag = 1;
         
-        } else if (Signal < Threshold) {
-          if (pulseFlag == 1) { // pulseFlag 확인 후 1이라면 bpmCnt++
-            bpmCnt++;           // ( Signal >= Threshold --> Signal < Threshold ==> Count++)
+          } else if (Signal < Threshold) {
+            if (pulseFlag == 1) { // pulseFlag 확인 후 1이라면 bpmCnt++
+              bpmCnt++;           // ( Signal >= Threshold --> Signal < Threshold ==> Count++)
           
-          }        
-          pulseFlag = 0;  // pulseFlag 초기화
+            }        
+            pulseFlag = 0;  // pulseFlag 초기화
                 
-        }
+          }
 
-        if((millis()-preMil) > /*60000*/ 180000) { // 3분동안 센싱 후 평균 계산
-          preMil = 0;
-          bpm = bpmCnt/3;
-          Serial.print("심박 수 센싱 결과 BPM : ");
-          Serial.println(bpm);  // Serial monitor 에 bpm 출력하고 싶으면 주석 제거.
-          bpmCnt = 0;             // count 초기화
-          pulseSensingMode = false;
+          if((millis()-preMil) > /*60000*/ 60000) { // 3분동안 센싱 후 평균 계산
+            preMil = 0;
+            bpm = bpmCnt/1;
+            Serial.print("심박 수 센싱 결과 BPM : ");
+            Serial.println(bpm);  // Serial monitor 에 bpm 출력하고 싶으면 주석 제거.
+            bpmCnt = 0;             // count 초기화
+            pulseSensingMode = false;
+            break;
         
-        }      
+          }
+          delay(20);  // 센싱에 delay를 줘서 값 안정화에 기여      
         
-      }  // 심박 수 측정 부분 끝
+        }  // 심박 수 측정 모드 끝
+        
+      }  // 심박 수 측정 부분 끝 (while(true) {)
     
       delay(20);  // 센싱에 delay를 줘서 값 안정화에 기여
       
@@ -548,6 +717,10 @@ void loop() {
     // 센싱 완료 후 데이터 publish (평균 심박수: bpm , 평균 체온: temp , 측정 시간: sensingHour_1 (or _2))
     // 측정 월, 측정 일, 측정 시간
     if ((sensingPublishStatus_1) || (sensingPublishStatus_2)) {
+
+      // test code
+      Serial.println("test: 주기적 센싱 결과 JSON으로 보내기 시작");
+      
       int sensingDay = 0;
       int sensingHour = 0;
       if ((sensingPublishStatus_1)) {
@@ -555,27 +728,38 @@ void loop() {
         // JSON으로 PUBLISH
         sensingDay = sensingDay_1;
         sensingHour = sensingHour_1;
-        
-        
+        sensingMode_Day1 = false;
+              
       } else if ((sensingPublishStatus_2)) {
         // 서버에 보낼 측정 시간 세팅 ( 측정 시간 변수 따로 두기): (sensingHour_2)
         sensingDay = sensingDay_2;
         sensingHour = sensingHour_2;
+        sensingMode_Day2 = false;
         
       }
 
       // (측정 시간 + 평균 심박수 + 체온) ==> AWS로 publish
+      
       sprintf(payload, "{\"month\":%d, \"day\":%d, \"hour\":%d, \"bpm\":%d, \"temp\":%f}", sensingMonth, sensingDay, sensingHour, bpm, temp);
-      if (chichiShadow.publish(pTOPIC_NAME, payload) == 0) {
-        Serial.print("Publish Message (센싱 결과값 AWS로 전송): ");
-        Serial.println(payload);
-      } else {
-        Serial.println("Publish failed");
-      }
+      while(true) {
+        if (chichiShadow.publish(pTOPIC_NAME, payload) == 0) {
+          Serial.print("Publish Message (센싱 결과값 AWS로 전송): ");
+          Serial.println(payload);
+          // publish 끝나고 다시 sensingPublishStatus = false 로 초기화
+          sensingPublishStatus_1 = false;
+          sensingPublishStatus_2 = false;
 
-      // publish 끝나고 다시 sensingPublishStatus = false 로 초기화
-      sensingPublishStatus_1 = false;
-      sensingPublishStatus_2 = false;
+          // 테스트 코드
+          Serial.println("test: 주기적 센싱 결과 JSON 전송 완료");
+          delay(1000);
+          break;
+        
+        } else {
+          Serial.println("Publish failed");
+          delay(1000);
+        }
+      }
+      
     
     }  // publish 완료
     
@@ -662,6 +846,23 @@ void loop() {
     }  // foodTime 되면 밥달라고 소리 알람 발생 끝
     
   }  // 밥 시간 알람 끝
+
+
+//  // 딥 슬립
+//  if (!sensingNow) {  // 실시간 측정 모드라면 딥 슬립에 빠지면 안됨
+//    int nowHour_d = timeinfo.tm_hour;
+//    int nowMin_d = timeinfo.tm_min;
+//    int nowSec_d = timeinfo.tm_sec;
+//
+//    // 현재 시간을 제대로 받았는지 확인
+//    Serial.printf("now time:    %d : %d : %d", nowHour_d, nowMin_d, nowSec_d);
+//
+//    // wakeup timer 설정
+    
+    
+    
+    
+  }
 
 
 }  // loop() 끝

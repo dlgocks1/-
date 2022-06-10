@@ -36,8 +36,8 @@
 AWS_IOT chichiShadow;
 
 // WiFi 설정 (본인 wifi에 맞추기)
-const char* ssid = "seed";
-const char* password = "seed0518";
+const char* ssid = "KT_GiGA_B366";
+const char* password = "dga27xh293";
 
 // Team AWS Thing
 char HOST_ADDRESS[] = "a28y105is1rb18-ats.iot.ap-northeast-2.amazonaws.com";
@@ -82,6 +82,8 @@ int nowMin_d;
 int nowSec_d;
 int nowTime_d;
 
+RTC_DATA_ATTR boolean deepSleepFlag;
+
 // 상태 변수
 // 강아지 건강 상태, 센싱 모드, publish 모드, 밥 시간 알람 모드
 
@@ -91,15 +93,15 @@ RTC_DATA_ATTR String healthStatus = "normal";  // 기본값: normal , 이상값 
 // 센싱데이터 AWS로 publish 해야하는 상태
 // 이미 했거나 안해도 되면 false , 측정완료해서 보내야하면 true
 // 오전 or 오후 구분
-boolean sensingPublishStatus_1 = false;
-boolean sensingPublishStatus_2 = false;
+RTC_DATA_ATTR boolean sensingPublishStatus_1 = false;
+RTC_DATA_ATTR boolean sensingPublishStatus_2 = false;
 
 // 밥 시간 알람 모드 (기본값(알람이 모두 미설정): false, 하나라도 설정: true)
 RTC_DATA_ATTR boolean foodAlarmMode = false;
 
 // readNow (실시간 센싱모드)
 // 기본: false , 실시간 센싱: true
-boolean sensingNow = false;
+RTC_DATA_ATTR boolean sensingNow = false;
 
 
 
@@ -113,17 +115,17 @@ RTC_DATA_ATTR int sensingMonth = 0;
 // 오전 7시
 const int sensingHour_1 = 7;
 RTC_DATA_ATTR int sensingDay_1 = 0;
-boolean sensingMode_Day1 = false;
+RTC_DATA_ATTR boolean sensingMode_Day1 = false;
 
 // 오후 10시
 const int sensingHour_2 = 22;
 RTC_DATA_ATTR int sensingDay_2 = 0;
-boolean sensingMode_Day2 = false;
+RTC_DATA_ATTR boolean sensingMode_Day2 = false;
 
 // 심박 수 측정
 const int PulseSensorPin = A0;   // A0: ESP32의 VP 핀 (Analog input)
 int Signal;                     // raw data. (센싱 데이터) Signal 값 범위: 0-4095
-const int Threshold = /*2740*/3000;     // 박동 수로 판단할 Signal 최소 값. Threshold 미만이면 무시
+const int Threshold = 2740;     // 박동 수로 판단할 Signal 최소 값. Threshold 미만이면 무시 (치치에게 맞춤)
 const int limit = 4095;         // ESP32 의 Signal 값 상한. 센서에서 손을 떼면 이 값이 읽히므로 비트가 카운트 되지 않게 하기 위해 필요.
 
 int bpmCnt = 0;                 // 심장 박동 count
@@ -234,7 +236,7 @@ void alarmPlay(int mp3Idx) {
       mp3 = new AudioGeneratorMP3();
       mp3->begin(id3, out);
       out->SetChannels(1);
-      out->SetGain(0.15);
+      out->SetGain(0.30);
     }
   
     if (mp3->isRunning()) {
@@ -311,8 +313,8 @@ void setup() {
 
 void loop() {
   // 센싱 데이터 전송 후 상태를 구독하기 전에 딥슬립에 들어가는 것을 방지하기 위한 flag
-  boolean deepSleepFlag = true;
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+  boolean deepSleepFlag;
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {  // 스위치로 wake up 되었을 경우에는 앱 동작을 기다림
     deepSleepFlag = false;
   }
 
@@ -338,7 +340,7 @@ void loop() {
       String healthStatus = (const char*) myObj["status"];
       
       Serial.print("Dog's Heart Beat is ");
-      Serial.print(healthStatus);
+      Serial.println(healthStatus);
 
       // 바이탈 사인이 이상할 경우 & 정상일 경우 각각 음성 메세지 출력
       if(healthStatus == "abnormal") {
@@ -490,11 +492,6 @@ void loop() {
     // 4회 측정 평균 체온 계산 (소수점 2자리 반올림)
     nowTemp = roundf((nowTemp / 4) * 100) / 100;
     
-//    // 오버플로우 대책
-//    delay(20);
-//    nowTemp = 37.3;
-//    delay(500);
-
     // 테스트 코드
     Serial.println("심박수 측정 시작");
 
@@ -517,7 +514,7 @@ void loop() {
         
       }
 
-      if ((millis()-preMil_Now > 6000)) {  // 6초동안 센싱 후 평균 분당 심박수 예측 계산
+      if ((millis()-preMil_Now) > 6000) {  // 6초동안 센싱 후 평균 분당 심박수 예측 계산
         preMil_Now = 0;
         nowBpm = nowBpmCnt*10;
         Serial.print("실시간 심박 수 센싱 결과 BPM: ");
@@ -638,9 +635,9 @@ void loop() {
                 
           }
 
-          if((millis()-preMil) > /*60000*/ 180000) { // 3분동안 센싱 후 평균 계산
+          if((millis()-preMil) > 180000) { // 3분동안 센싱 후 평균 계산
             preMil = 0;
-            bpm = bpmCnt/1;
+            bpm = bpmCnt*10;
             Serial.print("심박 수 센싱 결과 BPM : ");
             Serial.println(bpm);
             bpmCnt = 0;             // count 초기화
@@ -790,8 +787,9 @@ void loop() {
     
   }  // 밥 시간 알람 끝
 
-
+  
   // 딥 슬립
+  delay(500);
   if ((!sensingNow) && (deepSleepFlag)) {  // 실시간 측정 모드라면 딥슬립에 빠지면 안됨 (+ 딥슬립 flag)
     nowHour_d = timeinfo.tm_hour;
     nowMin_d = timeinfo.tm_min;
@@ -805,7 +803,7 @@ void loop() {
     int closeTime;  
     
     // 주기 센싱 시간부터 비교
-    if (nowHour_d >= 7 && nowHour_d < 22) {
+    if (nowHour_d > 7 && nowHour_d < 22) {
       closeTime = sensingHour_2 * 3600;
     } else {
       closeTime = sensingHour_1 * 3600;
@@ -867,11 +865,12 @@ void loop() {
     }  // foodTime 설정 비교 끝
 
     // 딥슬립 타이머 설정
+    int closeTime_d;
     if (closeTime <= nowTime_d) {
-      closeTime = closeTime + 24*3600;
+      closeTime_d = closeTime + 24*3600;
     }
       
-    TIME_TO_SLEEP = closeTime - nowTime_d;
+    TIME_TO_SLEEP = closeTime_d - nowTime_d;
 
     // 언제 깨어나는지 출력 (스위치로 깨우지 않으면 이 타이머 시간에 맞춰 일어남)
     Serial.print("예정 동작 시간:    ");
